@@ -1,37 +1,36 @@
 import os
-from scanner.rules import check_file
+import sys
+
+vulnerabilities_found = False
+
+print("🔍 Starting Security Scan...\n")
+
+for root, dirs, files in os.walk("."):
+    for file in files:
+        if file.endswith(".py"):
+            path = os.path.join(root, file)
+
+            with open(path, "r", errors="ignore") as f:
+                code = f.read()
+
+                # Rule 1: Hardcoded password
+                if "password" in code and "=" in code:
+                    print(f"[!] HARDCODED_SECRET detected in {path}")
+                    vulnerabilities_found = True
+
+                # Rule 2: Unsafe eval
+                if "eval(" in code:
+                    print(f"[!] UNSAFE_EVAL detected in {path}")
+                    vulnerabilities_found = True
+
+                # Rule 3: Unsafe deserialization
+                if "pickle.load" in code:
+                    print(f"[!] UNSAFE_DESERIALIZATION detected in {path}")
+                    vulnerabilities_found = True
 
 
-def scan_path(repo_path):
-    """
-    Scan all files in the given repository path
-    """
-    results = []
-
-    for root, dirs, files in os.walk(repo_path):
-        for file in files:
-            file_path = os.path.join(root, file)
-
-            try:
-                issues = check_file(file_path)
-                for issue in issues:
-                    results.append((issue, file_path))
-            except Exception:
-                # skip unreadable files
-                pass
-
-    return results
-
-
-# ✅ This allows manual running also
-if __name__ == "__main__":
-    print("🔍 Scanning repository...")
-
-    findings = scan_path(".")
-
-    if not findings:
-        print("✅ No vulnerabilities found")
-    else:
-        print("\n⚠️ Vulnerabilities detected:\n")
-        for issue, path in findings:
-            print(f"{issue} → {path}")
+if vulnerabilities_found:
+    print("\n❌ Vulnerabilities Found! Failing the pipeline.")
+    sys.exit(1)
+else:
+    print("\n✅ No vulnerabilities found.")
