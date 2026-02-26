@@ -1,50 +1,37 @@
 import os
-from scanner.rules import check_vulnerabilities
+from scanner.rules import check_file
 
 
-def scan_repository(repo_path):
-    findings = []
+def scan_path(repo_path):
+    """
+    Scan all files in the given repository path
+    """
+    results = []
 
     for root, dirs, files in os.walk(repo_path):
         for file in files:
-            # ✅ MULTI-LANGUAGE SUPPORT
-            if file.endswith((".py", ".js", ".ts")):
-                full_path = os.path.join(root, file)
+            file_path = os.path.join(root, file)
 
-                try:
-                    with open(full_path, "r", errors="ignore") as f:
-                        code = f.read()
+            try:
+                issues = check_file(file_path)
+                for issue in issues:
+                    results.append((issue, file_path))
+            except Exception:
+                # skip unreadable files
+                pass
 
-                    issues = check_vulnerabilities(code)
-
-                    for issue in issues:
-                        findings.append({
-                            "file": full_path,
-                            "issue": issue
-                        })
-
-                except Exception:
-                    pass
-
-    return findings
+    return results
 
 
-# 🔥 REAL GITHUB TEST
+# ✅ This allows manual running also
 if __name__ == "__main__":
-    from github_integration.github_fetch import clone_repo
+    print("🔍 Scanning repository...")
 
-    print("🔄 Cloning real GitHub repo...")
-    repo_path = clone_repo(
-        "https://github.com/juice-shop/juice-shop"
-    )
+    findings = scan_path(".")
 
-    print("🔍 Scanning repository...\n")
-
-    results = scan_repository(repo_path)
-
-    if not results:
+    if not findings:
         print("✅ No vulnerabilities found")
     else:
-        print("⚠️ Vulnerabilities detected:\n")
-        for r in results:
-            print(f"{r['issue']} → {r['file']}")
+        print("\n⚠️ Vulnerabilities detected:\n")
+        for issue, path in findings:
+            print(f"{issue} → {path}")

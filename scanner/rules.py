@@ -1,7 +1,17 @@
 import re
 
-def check_vulnerabilities(code):
+
+def check_file(file_path):
+    """
+    Read a file and check for vulnerabilities
+    """
     issues = []
+
+    try:
+        with open(file_path, "r", errors="ignore") as f:
+            code = f.read()
+    except Exception:
+        return issues
 
     # Hardcoded password
     if re.search(r'password\s*=\s*["\'].*["\']', code, re.IGNORECASE):
