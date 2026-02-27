@@ -6,9 +6,19 @@ vulnerabilities_found = False
 print("🔍 Starting Security Scan...\n")
 
 for root, dirs, files in os.walk("."):
+
+    # 🔥 Exclude scanner folder and .github folder
+    if root.startswith("./scanner") or root.startswith("./.github"):
+        continue
+
     for file in files:
         if file.endswith(".py"):
+
             path = os.path.join(root, file)
+
+            # 🔥 Skip this scanner file itself (extra safety)
+            if path.endswith("scanner.py"):
+                continue
 
             with open(path, "r", errors="ignore") as f:
                 code = f.read()
