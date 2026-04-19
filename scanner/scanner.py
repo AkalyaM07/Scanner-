@@ -1,18 +1,15 @@
 import os
 import sys
 import subprocess
+from ai_engine.explain import explain_issue   # ✅ fixed import
 
 vulnerabilities_found = False
+vulnerabilities = []
 
 
 def clone_repo(repo_url):
-    # Get repository name
     repo_name = repo_url.split("/")[-1].replace(".git", "")
-
-    # Create temp_repos folder if not exists
     os.makedirs("temp_repos", exist_ok=True)
-
-    # Create unique folder every run (prevents Windows permission error)
     clone_path = f"temp_repos/{repo_name}_{os.getpid()}"
 
     print(f"🌐 Cloning repository into {clone_path}...\n")
@@ -22,13 +19,12 @@ def clone_repo(repo_url):
 
 
 def run_scan(scan_path):
-    global vulnerabilities_found
+    global vulnerabilities_found, vulnerabilities
 
     print("🔍 Starting Security Scan...\n")
 
     for root, dirs, files in os.walk(scan_path):
 
-        # Skip .git directory
         if ".git" in root:
             continue
 
@@ -42,17 +38,35 @@ def run_scan(scan_path):
 
                         # Rule 1: Hardcoded password
                         if "password" in code and "=" in code:
-                            print(f"[!] HARDCODED_SECRET detected in {path}")
+                            vuln = {
+                                "check_id": "HARDCODED_SECRET",
+                                "path": path,
+                                "start": {"line": 0},
+                                "extra": {"message": "Hardcoded password detected"}
+                            }
+                            vulnerabilities.append(vuln)
                             vulnerabilities_found = True
 
                         # Rule 2: Unsafe eval
                         if "eval(" in code:
-                            print(f"[!] UNSAFE_EVAL detected in {path}")
+                            vuln = {
+                                "check_id": "UNSAFE_EVAL",
+                                "path": path,
+                                "start": {"line": 0},
+                                "extra": {"message": "Use of eval() detected"}
+                            }
+                            vulnerabilities.append(vuln)
                             vulnerabilities_found = True
 
                         # Rule 3: Unsafe deserialization
                         if "pickle.load" in code:
-                            print(f"[!] UNSAFE_DESERIALIZATION detected in {path}")
+                            vuln = {
+                                "check_id": "UNSAFE_DESERIALIZATION",
+                                "path": path,
+                                "start": {"line": 0},
+                                "extra": {"message": "Unsafe deserialization using pickle"}
+                            }
+                            vulnerabilities.append(vuln)
                             vulnerabilities_found = True
 
                 except Exception as e:
@@ -66,13 +80,27 @@ if __name__ == "__main__":
         repo_url = sys.argv[1]
         repo_path = clone_repo(repo_url)
 
-    # Case 2 & 3: GitHub Actions (Push / PR)
+    # Case 2: Local / GitHub Actions
     else:
         print("🔄 Running in CI mode (Scanning current repository)\n")
         repo_path = "."
 
     run_scan(repo_path)
 
+    # 🤖 AI Analysis
+    if vulnerabilities:
+        print("\n🤖 AI Analysis Started...\n")
+
+        for issue in vulnerabilities:
+            try:
+                result = explain_issue(issue)   # ✅ correct function
+                print("\n==============================")
+                print(result)
+                print("==============================\n")
+            except Exception as e:
+                print(f"⚠ AI analysis failed: {e}")
+
+    # Final status
     if vulnerabilities_found:
         print("\n❌ Vulnerabilities Found! Failing the pipeline.")
         sys.exit(1)

@@ -1,70 +1,135 @@
 import os
 import requests
+import time
 
-API_KEY = os.getenv("API_KEY")
+# =========================
+# CONFIG
+# =========================
 
-# 🔁 Cache to avoid repeated API calls
-cache = {}
+API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+} if HF_TOKEN else {}
+
+# cache to avoid repeated API calls
+CACHE = {}
+
+
+# =========================
+# AI CALL FUNCTION
+# =========================
+
+def call_ai(prompt):
+    """
+    Calls Hugging Face API safely
+    """
+
+    try:
+        response = requests.post(
+            API_URL,
+            headers=HEADERS,
+            json={"inputs": prompt},
+            timeout=60
+        )
+
+        # Model loading case
+        if response.status_code == 503:
+            time.sleep(3)
+            return call_ai(prompt)
+
+        # API failure → return None (handled later)
+        if response.status_code != 200:
+            return None
+
+        data = response.json()
+
+        if isinstance(data, list) and len(data) > 0:
+            return data[0].get("generated_text", "")
+
+        if isinstance(data, dict):
+            return data.get("generated_text", "")
+
+        return None
+
+    except Exception:
+        return None
+
+
+# =========================
+# FALLBACK EXPLANATION
+# =========================
+
+def fallback(rule_id, message):
+    return f"""
+Explanation: {message}
+
+Why dangerous: This vulnerability can be exploited by attackers to compromise system security.
+
+Hacker perspective: An attacker may use {rule_id} to gain unauthorized access or execute malicious actions.
+
+Fix: Avoid insecure coding patterns and validate inputs properly.
+"""
+
+
+# =========================
+# MAIN FUNCTION
+# =========================
 
 def explain_issue(issue):
     rule_id = issue.get("check_id", "Unknown")
     path = issue.get("path", "Unknown file")
-    start_line = issue.get("start", {}).get("line", "N/A")
+    line = issue.get("start", {}).get("line", "N/A")
     message = issue.get("extra", {}).get("message", "No details")
 
-    # 🧠 If already explained, reuse it
-    if rule_id in cache:
-        ai_output = cache[rule_id]
-    else:
-        prompt = f"""
-Explain this security issue in very simple English for a beginner.
+    cache_key = f"{rule_id}_{path}_{line}"
 
-Issue: {rule_id}
+    if cache_key in CACHE:
+        ai_output = CACHE[cache_key]
+    else:
+
+        prompt = f"""
+You are a cybersecurity expert.
+
+Explain this vulnerability in simple and hacker perspective.
+
+Vulnerability: {rule_id}
 Details: {message}
 
-Give:
+Format:
 Explanation:
-Impact:
+Why dangerous:
+Hacker perspective:
 Fix:
 """
 
-        # ❗ If API key missing
-        if not API_KEY:
-            ai_output = "No API key found. Cannot generate AI explanation."
+        # =========================
+        # AI OR FALLBACK DECISION
+        # =========================
+
+        if HF_TOKEN:
+            ai_output = call_ai(prompt)
+
+            if not ai_output:
+                ai_output = fallback(rule_id, message)
         else:
-            try:
-                response = requests.post(
-                    "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct",
-                    headers={"Authorization": f"Bearer {API_KEY}"},
-                    json={"inputs": prompt}
-                )
+            ai_output = fallback(rule_id, message)
 
-                data = response.json()
+        CACHE[cache_key] = ai_output
 
-                # ✅ Handle different response formats safely
-                if isinstance(data, list) and "generated_text" in data[0]:
-                    ai_output = data[0]["generated_text"]
-                elif "error" in data:
-                    ai_output = f"API Error: {data['error']}"
-                else:
-                    ai_output = "Unexpected response from AI."
+    return f"""
+==============================
 
-                # 💾 Save in cache
-                cache[rule_id] = ai_output
-
-            except Exception as e:
-                ai_output = f"Request failed: {str(e)}"
-
-    # ✅ Final formatted output
-    explanation = f"""
 🔴 Issue: {rule_id}
-📄 File: {path} (Line {start_line})
+📄 File: {path} (Line {line})
 
 ⚠️ Detected Message:
 {message}
 
-🤖 AI Explanation:
+🤖 AI Analysis:
 {ai_output}
-"""
 
-    return explanation
+==============================
+"""
