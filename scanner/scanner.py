@@ -2,6 +2,7 @@ import os
 import sys
 import subprocess
 from ai_engine.explain import explain_issue
+from report import generate_report   # ✅ ADD THIS
 
 vulnerabilities_found = False
 vulnerabilities = []
@@ -13,7 +14,8 @@ IGNORE_DIRS = {
     "__pycache__",
     "scanner",
     "ai_engine",
-    "temp_repos"
+    "temp_repos",
+    "reports"   # ✅ avoid scanning generated reports
 }
 
 # ✅ Ignore internal files
@@ -22,7 +24,8 @@ IGNORE_FILES = {
     "rules.py",
     "explain.py",
     "test_hf_api.py",
-    "test_dns.py"
+    "test_dns.py",
+    "report.py"   # ✅ avoid scanning report file itself
 }
 
 
@@ -53,7 +56,7 @@ def run_scan(scan_path):
             if file in IGNORE_FILES:
                 continue
 
-            # ✅ scan ALL python files (including test files)
+            # ✅ scan ALL python files
             if not file.endswith(".py"):
                 continue
 
@@ -123,6 +126,9 @@ if __name__ == "__main__":
                 print("==============================\n")
             except Exception as e:
                 print(f"⚠ AI analysis failed: {e}")
+
+    # ✅ 📄 GENERATE REPORT (VERY IMPORTANT)
+    generate_report(vulnerabilities)
 
     # ✅ Final result
     if vulnerabilities_found:
