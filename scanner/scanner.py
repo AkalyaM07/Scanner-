@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 from ai_engine.explain import explain_issue
-from report import generate_report   # ✅ ADD THIS
+from scanner.report import generate_report   # ✅ FIXED IMPORT
 
 vulnerabilities_found = False
 vulnerabilities = []
@@ -15,7 +15,7 @@ IGNORE_DIRS = {
     "scanner",
     "ai_engine",
     "temp_repos",
-    "reports"   # ✅ avoid scanning generated reports
+    "reports"
 }
 
 # ✅ Ignore internal files
@@ -25,7 +25,7 @@ IGNORE_FILES = {
     "explain.py",
     "test_hf_api.py",
     "test_dns.py",
-    "report.py"   # ✅ avoid scanning report file itself
+    "report.py"
 }
 
 
@@ -52,11 +52,11 @@ def run_scan(scan_path):
 
         for file in files:
 
-            # ✅ ignore internal files only
+            # ✅ ignore internal files
             if file in IGNORE_FILES:
                 continue
 
-            # ✅ scan ALL python files
+            # ✅ only python files
             if not file.endswith(".py"):
                 continue
 
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         repo_url = sys.argv[1]
         repo_path = clone_repo(repo_url)
 
-    # Case 2: Scan current repo (CI mode)
+    # Case 2: CI mode
     else:
         print("🔄 Running in CI mode (Scanning current repository)\n")
         repo_path = "."
@@ -127,7 +127,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"⚠ AI analysis failed: {e}")
 
-    # ✅ 📄 GENERATE REPORT (VERY IMPORTANT)
+    # ✅ Generate Report
     generate_report(vulnerabilities)
 
     # ✅ Final result
