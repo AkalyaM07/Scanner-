@@ -1,20 +1,57 @@
 import json
 import os
+from datetime import datetime
 
 def generate_report(vulnerabilities):
-    report_data = {
-        "total_vulnerabilities": len(vulnerabilities),
-        "issues": vulnerabilities
-    }
 
-    # create reports folder
+    # 📁 Create reports folder
     os.makedirs("reports", exist_ok=True)
 
-    file_path = "reports/report.json"
+    # =========================
+    # ✅ JSON (optional backup)
+    # =========================
+    json_path = "reports/report.json"
+    with open(json_path, "w") as f:
+        json.dump({
+            "total_vulnerabilities": len(vulnerabilities),
+            "issues": vulnerabilities
+        }, f, indent=4)
 
-    with open(file_path, "w") as f:
-        json.dump(report_data, f, indent=4)
+    # =========================
+    # ✅ PDF REPORT
+    # =========================
+    pdf_path = "reports/report.pdf"
 
-    print(f"\n📄 Report generated: {file_path}")
+    try:
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet
 
-    return file_path
+        doc = SimpleDocTemplate(pdf_path)
+        styles = getSampleStyleSheet()
+
+        content = []
+
+        # Title
+        content.append(Paragraph("🔐 Security Scan Report", styles["Title"]))
+        content.append(Spacer(1, 10))
+
+        # Summary
+        content.append(Paragraph(f"Total Vulnerabilities: {len(vulnerabilities)}", styles["Normal"]))
+        content.append(Paragraph(f"Generated At: {datetime.now()}", styles["Normal"]))
+        content.append(Spacer(1, 15))
+
+        # Issues
+        for v in vulnerabilities:
+            content.append(Paragraph(f"Issue: {v['check_id']}", styles["Normal"]))
+            content.append(Paragraph(f"File: {v['path']}", styles["Normal"]))
+            content.append(Paragraph(f"Message: {v['extra']['message']}", styles["Normal"]))
+            content.append(Spacer(1, 10))
+
+        doc.build(content)
+
+        print(f"\n📕 PDF Report generated: {pdf_path}")
+
+    except Exception as e:
+        print(f"⚠ PDF generation failed: {e}")
+
+    return pdf_path
