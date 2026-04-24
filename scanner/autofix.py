@@ -14,25 +14,25 @@ def generate_autofix(vulnerabilities):
 
         "HARDCODED_SECRET": "Move secrets to environment variables or .env files.\nNever hardcode API keys.",
 
-        "DANGEROUS_EVAL": "Avoid eval(). Use ast.literal_eval() or proper parsing.",
+        "DANGEROUS_EVAL": "Avoid eval(). Use ast.literal_eval() or safe parsing.",
 
         "DANGEROUS_EXEC": "Avoid exec(). It can execute arbitrary code.",
 
         "SQL_INJECTION_RISK": "Use parameterized queries.\nExample:\ncursor.execute('SELECT * FROM users WHERE id=%s', (user_id,))",
 
-        "COMMAND_INJECTION": "Avoid os.system(). Use subprocess.run() with safe arguments.",
+        "COMMAND_INJECTION": "Avoid os.system(). Use subprocess.run() safely.",
 
-        "UNSAFE_SUBPROCESS": "Use subprocess.run() with shell=False and validated inputs.",
+        "UNSAFE_SUBPROCESS": "Use subprocess.run(shell=False) with validated input.",
 
-        "UNSAFE_DESERIALIZATION": "Avoid pickle.load() on untrusted data. Use JSON instead.",
+        "UNSAFE_DESERIALIZATION": "Avoid pickle.load() on untrusted data. Use JSON.",
 
-        "DEBUG_MODE_ON": "Disable debug mode in production.\nSet debug=False.",
+        "DEBUG_MODE_ON": "Disable debug mode in production (debug=False).",
 
         "INSECURE_HTTP": "Use HTTPS instead of HTTP.",
 
-        "HIDDEN_EXCEPTION": "Avoid bare except. Specify exception type and log errors.",
+        "HIDDEN_EXCEPTION": "Avoid bare except. Specify exception and log it.",
 
-        "WEAK_RANDOM_USAGE": "Use secrets module instead.\nExample:\nimport secrets\nsecrets.token_hex()"
+        "WEAK_RANDOM_USAGE": "Use secrets module.\nExample:\nimport secrets\nsecrets.token_hex()"
     }
 
     # =========================
@@ -46,7 +46,7 @@ def generate_autofix(vulnerabilities):
 
         suggestion = FIX_MAP.get(issue, "No direct fix available.")
 
-        # 🤖 AI Explanation (reuse your model)
+        # 🤖 AI Explanation
         try:
             ai_text = explain_issue(v)
         except:
@@ -61,9 +61,14 @@ def generate_autofix(vulnerabilities):
         })
 
     # =========================
+    # 📁 CREATE REPORT FOLDER (IMPORTANT FIX)
+    # =========================
+    os.makedirs("reports", exist_ok=True)
+
+    # =========================
     # 📄 GENERATE PDF
     # =========================
-    pdf_path = "autofix_report.pdf"
+    pdf_path = "reports/autofix_report.pdf"
 
     try:
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
@@ -75,7 +80,7 @@ def generate_autofix(vulnerabilities):
         content = []
 
         # Title
-        content.append(Paragraph("🛠 Auto-Fix Suggestion Report", styles["Title"]))
+        content.append(Paragraph("Auto-Fix Suggestion Report", styles["Title"]))
         content.append(Spacer(1, 10))
 
         # Summary
@@ -83,13 +88,15 @@ def generate_autofix(vulnerabilities):
         content.append(Paragraph(f"Generated At: {datetime.now()}", styles["Normal"]))
         content.append(Spacer(1, 15))
 
-        # Each issue
+        # Issues
         for s in suggestions:
             content.append(Paragraph(f"Issue: {s['issue']}", styles["Normal"]))
             content.append(Paragraph(f"File: {s['file']}", styles["Normal"]))
             content.append(Paragraph(f"Problem: {s['problem']}", styles["Normal"]))
             content.append(Paragraph(f"Suggested Fix: {s['fix']}", styles["Normal"]))
-            content.append(Paragraph(f"AI Insight: {s['ai']}", styles["Normal"]))
+            content.append(Spacer(1, 6))
+            content.append(Paragraph("AI Insight:", styles["Heading3"]))
+            content.append(Paragraph(s['ai'], styles["Normal"]))
             content.append(Spacer(1, 12))
 
         doc.build(content)
