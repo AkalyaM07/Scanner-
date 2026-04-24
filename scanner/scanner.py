@@ -2,7 +2,9 @@ import os
 import sys
 import subprocess
 from ai_engine.explain import explain_issue
-from scanner.report import generate_report   # ✅ FIXED IMPORT
+from scanner.report import generate_report
+from scanner.autofix import generate_autofix
+from scanner.rules import check_code   # ✅ NEW
 
 vulnerabilities_found = False
 vulnerabilities = []
@@ -23,12 +25,14 @@ IGNORE_FILES = {
     "scanner.py",
     "rules.py",
     "explain.py",
-    "test_hf_api.py",
-    "test_dns.py",
-    "report.py"
+    "report.py",
+    "autofix.py"
 }
 
 
+# =========================
+# CLONE REPO
+# =========================
 def clone_repo(repo_url):
     repo_name = repo_url.split("/")[-1].replace(".git", "")
     os.makedirs("temp_repos", exist_ok=True)
@@ -40,6 +44,9 @@ def clone_repo(repo_url):
     return clone_path
 
 
+# =========================
+# SCANNER USING RULES.PY
+# =========================
 def run_scan(scan_path):
     global vulnerabilities_found, vulnerabilities
 
@@ -47,16 +54,13 @@ def run_scan(scan_path):
 
     for root, dirs, files in os.walk(scan_path):
 
-        # ✅ remove ignored directories
         dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
 
         for file in files:
 
-            # ✅ ignore internal files
             if file in IGNORE_FILES:
                 continue
 
-            # ✅ only python files
             if not file.endswith(".py"):
                 continue
 
@@ -66,33 +70,17 @@ def run_scan(scan_path):
                 with open(path, "r", errors="ignore") as f:
                     code = f.read()
 
-                    # 🔴 Rule 1: Hardcoded password
-                    if "password" in code and "=" in code:
-                        vulnerabilities.append({
-                            "check_id": "HARDCODED_SECRET",
-                            "path": path,
-                            "start": {"line": 0},
-                            "extra": {"message": "Hardcoded password detected"}
-                        })
-                        vulnerabilities_found = True
+                    # ✅ USE RULE ENGINE
+                    issues = check_code(code)
 
-                    # 🔴 Rule 2: Unsafe eval
-                    if "eval(" in code:
+                    for issue in issues:
                         vulnerabilities.append({
-                            "check_id": "UNSAFE_EVAL",
+                            "check_id": issue,
                             "path": path,
                             "start": {"line": 0},
-                            "extra": {"message": "Use of eval() detected"}
-                        })
-                        vulnerabilities_found = True
-
-                    # 🔴 Rule 3: Unsafe deserialization
-                    if "pickle.load" in code:
-                        vulnerabilities.append({
-                            "check_id": "UNSAFE_DESERIALIZATION",
-                            "path": path,
-                            "start": {"line": 0},
-                            "extra": {"message": "Unsafe deserialization using pickle"}
+                            "extra": {
+                                "message": issue.replace("_", " ").title()
+                            }
                         })
                         vulnerabilities_found = True
 
@@ -100,21 +88,23 @@ def run_scan(scan_path):
                 print(f"⚠ Could not read file {path}: {e}")
 
 
+# =========================
+# MAIN
+# =========================
 if __name__ == "__main__":
 
-    # Case 1: Scan external repo
     if len(sys.argv) == 2:
         repo_url = sys.argv[1]
         repo_path = clone_repo(repo_url)
-
-    # Case 2: CI mode
     else:
         print("🔄 Running in CI mode (Scanning current repository)\n")
         repo_path = "."
 
     run_scan(repo_path)
 
-    # 🤖 AI Analysis
+    # =========================
+    # 🤖 AI ANALYSIS
+    # =========================
     if vulnerabilities:
         print("\n🤖 AI Analysis Started...\n")
 
@@ -127,10 +117,19 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"⚠ AI analysis failed: {e}")
 
-    # ✅ Generate Report
+    # =========================
+    # 📄 REPORT
+    # =========================
     generate_report(vulnerabilities)
 
-    # ✅ Final result
+    # =========================
+    # 🛠 AUTO-FIX
+    # =========================
+    generate_autofix(vulnerabilities)
+
+    # =========================
+    # FINAL STATUS
+    # =========================
     if vulnerabilities_found:
         print("\n❌ Vulnerabilities Found! Failing the pipeline.")
         sys.exit(1)
