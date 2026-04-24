@@ -1,75 +1,133 @@
 import os
+import requests
+import time
 from datetime import datetime
-from ai_engine.explain import explain_issue
 
+# =========================
+# AI CONFIG (HuggingFace)
+# =========================
+API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+} if HF_TOKEN else {}
+
+
+# =========================
+# AI CALL
+# =========================
+def call_ai(prompt):
+    try:
+        res = requests.post(API_URL, headers=HEADERS, json={"inputs": prompt}, timeout=60)
+
+        if res.status_code == 503:
+            time.sleep(3)
+            return call_ai(prompt)
+
+        if res.status_code != 200:
+            return None
+
+        data = res.json()
+
+        if isinstance(data, list):
+            return data[0].get("generated_text", "")
+
+        return data.get("generated_text", "")
+
+    except:
+        return None
+
+
+# =========================
+# RULE-BASED PATCH
+# =========================
+def rule_based_fix(issue, code):
+
+    if issue == "HARDCODED_PASSWORD":
+        return code.replace("password =", "password = os.getenv(")
+
+    if issue == "DANGEROUS_EVAL":
+        return code.replace("eval(", "ast.literal_eval(")
+
+    if issue == "UNSAFE_DESERIALIZATION":
+        return code.replace("pickle.load", "json.load")
+
+    if issue == "COMMAND_INJECTION":
+        return code.replace("os.system", "subprocess.run")
+
+    return None
+
+
+# =========================
+# EXTRACT CODE SNIPPET
+# =========================
+def get_code_snippet(path):
+    try:
+        with open(path, "r", errors="ignore") as f:
+            return f.read()[:500]   # first 500 chars only
+    except:
+        return "Could not read file"
+
+
+# =========================
+# MAIN FUNCTION
+# =========================
 def generate_autofix(vulnerabilities):
+
+    os.makedirs("reports", exist_ok=True)
+    pdf_path = "reports/autofix_report.pdf"
 
     suggestions = []
 
-    # =========================
-    # 🔧 RULE-BASED FIX MAPPING
-    # =========================
-    FIX_MAP = {
-        "HARDCODED_PASSWORD": "Use environment variables.\nExample:\nimport os\npassword = os.getenv('PASSWORD')",
-
-        "HARDCODED_SECRET": "Move secrets to environment variables or .env files.\nNever hardcode API keys.",
-
-        "DANGEROUS_EVAL": "Avoid eval(). Use ast.literal_eval() or safe parsing.",
-
-        "DANGEROUS_EXEC": "Avoid exec(). It can execute arbitrary code.",
-
-        "SQL_INJECTION_RISK": "Use parameterized queries.\nExample:\ncursor.execute('SELECT * FROM users WHERE id=%s', (user_id,))",
-
-        "COMMAND_INJECTION": "Avoid os.system(). Use subprocess.run() safely.",
-
-        "UNSAFE_SUBPROCESS": "Use subprocess.run(shell=False) with validated input.",
-
-        "UNSAFE_DESERIALIZATION": "Avoid pickle.load() on untrusted data. Use JSON.",
-
-        "DEBUG_MODE_ON": "Disable debug mode in production (debug=False).",
-
-        "INSECURE_HTTP": "Use HTTPS instead of HTTP.",
-
-        "HIDDEN_EXCEPTION": "Avoid bare except. Specify exception and log it.",
-
-        "WEAK_RANDOM_USAGE": "Use secrets module.\nExample:\nimport secrets\nsecrets.token_hex()"
-    }
-
-    # =========================
-    # PROCESS VULNERABILITIES
-    # =========================
     for v in vulnerabilities:
 
-        issue = v.get("check_id", "UNKNOWN")
-        path = v.get("path", "")
+        issue = v.get("check_id")
+        path = v.get("path")
         message = v.get("extra", {}).get("message", "")
 
-        suggestion = FIX_MAP.get(issue, "No direct fix available.")
+        original_code = get_code_snippet(path)
 
-        # 🤖 AI Explanation
-        try:
-            ai_text = explain_issue(v)
-        except:
-            ai_text = "AI explanation not available"
+        # =========================
+        # RULE FIX FIRST
+        # =========================
+        fixed_code = rule_based_fix(issue, original_code)
+
+        # =========================
+        # AI FIX IF RULE FAILS
+        # =========================
+        if not fixed_code:
+            prompt = f"""
+Fix the security issue in this Python code.
+
+Issue: {issue}
+Problem: {message}
+
+Code:
+{original_code}
+
+Return only fixed code.
+"""
+
+            ai_fix = call_ai(prompt)
+
+            if ai_fix:
+                fixed_code = ai_fix
+            else:
+                fixed_code = "No fix available"
 
         suggestions.append({
             "issue": issue,
             "file": path,
             "problem": message,
-            "fix": suggestion,
-            "ai": ai_text
+            "original": original_code,
+            "fixed": fixed_code
         })
 
     # =========================
-    # 📁 CREATE REPORT FOLDER (IMPORTANT FIX)
+    # PDF GENERATION
     # =========================
-    os.makedirs("reports", exist_ok=True)
-
-    # =========================
-    # 📄 GENERATE PDF
-    # =========================
-    pdf_path = "reports/autofix_report.pdf"
-
     try:
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet
@@ -79,29 +137,30 @@ def generate_autofix(vulnerabilities):
 
         content = []
 
-        # Title
-        content.append(Paragraph("Auto-Fix Suggestion Report", styles["Title"]))
+        content.append(Paragraph("Auto-Fix Code Report", styles["Title"]))
         content.append(Spacer(1, 10))
 
-        # Summary
-        content.append(Paragraph(f"Total Issues: {len(suggestions)}", styles["Normal"]))
         content.append(Paragraph(f"Generated At: {datetime.now()}", styles["Normal"]))
         content.append(Spacer(1, 15))
 
-        # Issues
         for s in suggestions:
-            content.append(Paragraph(f"Issue: {s['issue']}", styles["Normal"]))
+            content.append(Paragraph(f"Issue: {s['issue']}", styles["Heading3"]))
             content.append(Paragraph(f"File: {s['file']}", styles["Normal"]))
             content.append(Paragraph(f"Problem: {s['problem']}", styles["Normal"]))
-            content.append(Paragraph(f"Suggested Fix: {s['fix']}", styles["Normal"]))
+
             content.append(Spacer(1, 6))
-            content.append(Paragraph("AI Insight:", styles["Heading3"]))
-            content.append(Paragraph(s['ai'], styles["Normal"]))
-            content.append(Spacer(1, 12))
+            content.append(Paragraph("Vulnerable Code:", styles["Heading4"]))
+            content.append(Paragraph(s["original"], styles["Normal"]))
+
+            content.append(Spacer(1, 6))
+            content.append(Paragraph("Fixed Code:", styles["Heading4"]))
+            content.append(Paragraph(s["fixed"], styles["Normal"]))
+
+            content.append(Spacer(1, 15))
 
         doc.build(content)
 
-        print(f"\n🛠 Auto-fix PDF generated: {pdf_path}")
+        print(f"\n🛠 Advanced Auto-fix PDF generated: {pdf_path}")
 
     except Exception as e:
         print(f"⚠ PDF generation failed: {e}")
