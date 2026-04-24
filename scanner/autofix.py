@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 # =========================
-# AI CONFIG (HuggingFace)
+# AI CONFIG
 # =========================
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -41,34 +41,55 @@ def call_ai(prompt):
 
 
 # =========================
-# RULE-BASED PATCH
+# EXTRACT ONLY RELEVANT LINE
 # =========================
-def rule_based_fix(issue, code):
-
-    if issue == "HARDCODED_PASSWORD":
-        return code.replace("password =", "password = os.getenv(")
-
-    if issue == "DANGEROUS_EVAL":
-        return code.replace("eval(", "ast.literal_eval(")
-
-    if issue == "UNSAFE_DESERIALIZATION":
-        return code.replace("pickle.load", "json.load")
-
-    if issue == "COMMAND_INJECTION":
-        return code.replace("os.system", "subprocess.run")
-
-    return None
-
-
-# =========================
-# EXTRACT CODE SNIPPET
-# =========================
-def get_code_snippet(path):
+def get_code_snippet(path, keyword):
     try:
         with open(path, "r", errors="ignore") as f:
-            return f.read()[:500]   # first 500 chars only
+            lines = f.readlines()
+
+        for line in lines:
+            if keyword.lower() in line.lower():
+                return line.strip()
+
+        return "Relevant code not found"
+
     except:
         return "Could not read file"
+
+
+# =========================
+# RULE-BASED FIXES (CORRECT)
+# =========================
+def rule_based_fix(issue):
+
+    FIXES = {
+        "HARDCODED_PASSWORD": "import os\npassword = os.getenv('PASSWORD')",
+
+        "HARDCODED_SECRET": "import os\napi_key = os.getenv('API_KEY')",
+
+        "DANGEROUS_EVAL": "import ast\nresult = ast.literal_eval(user_input)",
+
+        "DANGEROUS_EXEC": "# Avoid exec()\n# Use safe function mapping instead",
+
+        "SQL_INJECTION_RISK": "cursor.execute('SELECT * FROM users WHERE id=%s', (user_id,))",
+
+        "COMMAND_INJECTION": "import subprocess\nsubprocess.run(['ls', '-l'])",
+
+        "UNSAFE_SUBPROCESS": "subprocess.run(['command'], shell=False)",
+
+        "UNSAFE_DESERIALIZATION": "import json\ndata = json.load(file)",
+
+        "DEBUG_MODE_ON": "app.run(debug=False)",
+
+        "INSECURE_HTTP": "Use https:// instead of http://",
+
+        "HIDDEN_EXCEPTION": "except Exception as e:\n    print(e)",
+
+        "WEAK_RANDOM_USAGE": "import secrets\nsecrets.token_hex()"
+    }
+
+    return FIXES.get(issue, None)
 
 
 # =========================
@@ -81,21 +102,40 @@ def generate_autofix(vulnerabilities):
 
     suggestions = []
 
+    # keyword mapping to extract correct line
+    keyword_map = {
+        "HARDCODED_PASSWORD": "password",
+        "HARDCODED_SECRET": "key",
+        "DANGEROUS_EVAL": "eval(",
+        "DANGEROUS_EXEC": "exec(",
+        "SQL_INJECTION_RISK": "execute",
+        "COMMAND_INJECTION": "os.system",
+        "UNSAFE_SUBPROCESS": "subprocess",
+        "UNSAFE_DESERIALIZATION": "pickle",
+        "DEBUG_MODE_ON": "debug",
+        "INSECURE_HTTP": "http://",
+        "HIDDEN_EXCEPTION": "except",
+        "WEAK_RANDOM_USAGE": "random"
+    }
+
     for v in vulnerabilities:
 
         issue = v.get("check_id")
         path = v.get("path")
         message = v.get("extra", {}).get("message", "")
 
-        original_code = get_code_snippet(path)
+        keyword = keyword_map.get(issue, "")
+        original_code = get_code_snippet(path, keyword)
 
         # =========================
         # RULE FIX FIRST
         # =========================
-        fixed_code = rule_based_fix(issue, original_code)
+        fixed_code = rule_based_fix(issue)
+
+        confidence = "High (Rule-based)"
 
         # =========================
-        # AI FIX IF RULE FAILS
+        # AI FIX IF NO RULE
         # =========================
         if not fixed_code:
             prompt = f"""
@@ -114,15 +154,18 @@ Return only fixed code.
 
             if ai_fix:
                 fixed_code = ai_fix
+                confidence = "Medium (AI Generated)"
             else:
                 fixed_code = "No fix available"
+                confidence = "Low"
 
         suggestions.append({
             "issue": issue,
             "file": path,
             "problem": message,
             "original": original_code,
-            "fixed": fixed_code
+            "fixed": fixed_code,
+            "confidence": confidence
         })
 
     # =========================
@@ -147,6 +190,7 @@ Return only fixed code.
             content.append(Paragraph(f"Issue: {s['issue']}", styles["Heading3"]))
             content.append(Paragraph(f"File: {s['file']}", styles["Normal"]))
             content.append(Paragraph(f"Problem: {s['problem']}", styles["Normal"]))
+            content.append(Paragraph(f"Confidence: {s['confidence']}", styles["Normal"]))
 
             content.append(Spacer(1, 6))
             content.append(Paragraph("Vulnerable Code:", styles["Heading4"]))
@@ -160,7 +204,7 @@ Return only fixed code.
 
         doc.build(content)
 
-        print(f"\n🛠 Advanced Auto-fix PDF generated: {pdf_path}")
+        print(f"\n🛠 Final Auto-fix PDF generated: {pdf_path}")
 
     except Exception as e:
         print(f"⚠ PDF generation failed: {e}")
