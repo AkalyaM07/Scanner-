@@ -6,14 +6,14 @@ _tokenizer = None
 
 
 # =========================
-# SAFE MODEL LOADER
+# MODEL LOADER
 # =========================
 def load_model():
     global _model, _tokenizer
 
     if _model is None:
         print("🤖 Loading FLAN-T5 model...")
-        model_name = "google/flan-t5-base"
+        model_name = "google/flan-t5-large"
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         _model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         print("✅ Model loaded successfully")
@@ -26,10 +26,19 @@ def call_ai(prompt):
     try:
         load_model()
 
-        inputs = _tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
-        outputs = _model.generate(**inputs, max_new_tokens=200)
+        inputs = _tokenizer(
+            prompt,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512
+        )
+        outputs = _model.generate(
+            **inputs,
+            max_new_tokens=200,
+            num_beams=4,
+            early_stopping=True
+        )
         result = _tokenizer.decode(outputs[0], skip_special_tokens=True)
-
         return result if result else None
 
     except Exception as e:
@@ -42,17 +51,17 @@ def call_ai(prompt):
 # =========================
 def fallback(rule_id, message):
     return f"""
-1. Simple Explanation:
-{message}
+1. What is {rule_id}?
+{message}. This means sensitive information is exposed directly in the source code.
 
-2. Why it is dangerous:
-This vulnerability can allow attackers to exploit weak coding practices and compromise system security.
+2. Why is it dangerous?
+Anyone who reads the code can steal this information and misuse it.
 
-3. Attack scenario:
-Attackers target {rule_id} to gain unauthorized access, steal data, or execute malicious code.
+3. How can a hacker misuse it?
+A hacker can find this value in your code and use it to break into your system.
 
-4. Fix:
-Avoid insecure coding patterns, validate inputs, and use secure alternatives.
+4. How to fix it?
+Never write sensitive values directly in code. Use environment variables instead.
 """
 
 
@@ -70,26 +79,18 @@ def explain_issue(issue):
     if cache_key in CACHE:
         return CACHE[cache_key]
 
-    prompt = f"""
-You are a senior cybersecurity engineer teaching students.
+    prompt = f"""You are a cybersecurity teacher explaining to beginner students.
 
-Explain the vulnerability in simple and practical terms.
+A security vulnerability called "{rule_id}" was found in the code.
 
-Vulnerability: {rule_id}
-Description: {message}
+Answer these 4 questions in simple English:
 
-Provide response in this format:
+1. What is {rule_id}? (explain in 2-3 simple lines what this vulnerability means)
+2. Why is it dangerous? (explain the risk in 1-2 lines)
+3. How can a hacker misuse it? (give a simple real example)
+4. How to fix it? (give a simple solution in 1-2 lines)
 
-1. Simple Explanation
-2. Why attackers target it
-3. Real-world attack scenario
-4. Secure fix for developers
-
-Rules:
-- Do NOT repeat only the name
-- Be practical and beginner-friendly
-- Use simple English
-"""
+Use very simple words. Assume the student has never heard of this vulnerability before."""
 
     ai_output = call_ai(prompt)
 
