@@ -1,19 +1,35 @@
-import os
-import requests
 import time
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
 
 # =========================
-# CONFIG
+# MODEL CONFIG
 # =========================
-API_URL = "https://router.huggingface.co/v1/chat/completions"
-HF_TOKEN = os.getenv("HF_TOKEN")
+MODEL_NAME = "google/flan-t5-base"
 
-HEADERS = {
-    "Authorization": f"Bearer {HF_TOKEN}",
-    "Content-Type": "application/json"
-}
+generator = None
+tokenizer = None
+model = None
 
-CACHE = {}
+
+# =========================
+# LOAD MODEL ONCE
+# =========================
+def load_model():
+    global generator, tokenizer, model
+
+    if generator is None:
+        print("🤖 Loading FLAN-T5 model...")
+
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
+
+        generator = pipeline(
+            "text2text-generation",
+            model=model,
+            tokenizer=tokenizer
+        )
+
+        print("✅ Model loaded successfully")
 
 
 # =========================
@@ -21,60 +37,37 @@ CACHE = {}
 # =========================
 def call_ai(prompt):
     try:
-        response = requests.post(
-            API_URL,
-            headers=HEADERS,
-            json={
-                "model": "meta-llama/Llama-3.3-70B-Instruct:sambanova",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a cybersecurity teacher explaining vulnerabilities to beginner students in simple English."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_tokens": 300
-            },
-            timeout=60
+        load_model()
+
+        result = generator(
+            prompt,
+            max_new_tokens=220,
+            do_sample=False
         )
 
-        if response.status_code == 503:
-            print("[INFO] Model loading, retrying in 5s...")
-            time.sleep(5)
-            return call_ai(prompt)
-
-        if response.status_code != 200:
-            print(f"[DEBUG] Status: {response.status_code}")
-            print(f"[DEBUG] Error: {response.text}")
-            return None
-
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+        return result[0]["generated_text"]
 
     except Exception as e:
-        print(f"[DEBUG] Exception: {e}")
+        print(f"⚠ AI Error: {e}")
         return None
 
 
 # =========================
-# FALLBACK
+# FALLBACK (ONLY IF AI FAILS)
 # =========================
 def fallback(rule_id, message):
     return f"""
 1. What is {rule_id}?
-{message}. This means unsafe code is present directly in your source code.
+{message}. This means unsafe code is detected in the project.
 
 2. Why is it dangerous?
-Anyone who accesses your code can exploit this weakness to attack your system.
+Attackers may exploit this vulnerability to harm the system.
 
 3. How can a hacker misuse it?
-A hacker can find this vulnerability and use it to gain unauthorized access or damage your system.
+They can use it to gain unauthorized access or steal data.
 
 4. How to fix it?
-Follow secure coding practices and never expose sensitive data or use unsafe functions.
+Remove unsafe patterns and use secure coding practices.
 """
 
 
@@ -87,21 +80,18 @@ def explain_issue(issue):
     line = issue.get("start", {}).get("line", "N/A")
     message = issue.get("extra", {}).get("message", "No details")
 
-    cache_key = f"{rule_id}_{path}_{line}"
+    prompt = f"""
+A security vulnerability called "{rule_id}" was found in code.
 
-    if cache_key in CACHE:
-        return CACHE[cache_key]
+Explain in very simple English:
 
-    prompt = f"""A security vulnerability called "{rule_id}" was found in a student's code.
+1. What is {rule_id}?
+2. Why is it dangerous?
+3. How can a hacker misuse it?
+4. How to fix it?
 
-Explain this to a beginner student in simple English:
-
-1. What is {rule_id}? (explain in 2-3 simple lines what this means)
-2. Why is it dangerous? (explain the risk in 1-2 lines)
-3. How can a hacker misuse it? (give one simple real example)
-4. How to fix it? (give a simple solution in 1-2 lines)
-
-Use very simple words. Assume the student has never heard of this before."""
+Keep explanation simple for students.
+"""
 
     ai_output = call_ai(prompt)
 
@@ -109,7 +99,7 @@ Use very simple words. Assume the student has never heard of this before."""
         print("⚠ AI failed → using fallback")
         ai_output = fallback(rule_id, message)
 
-    result = f"""
+    return f"""
 ==============================
 
 🔴 Issue: {rule_id}
@@ -123,6 +113,3 @@ Use very simple words. Assume the student has never heard of this before."""
 
 ==============================
 """
-
-    CACHE[cache_key] = result
-    return result
