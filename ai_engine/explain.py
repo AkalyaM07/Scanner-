@@ -6,7 +6,9 @@ import time
 # CONFIG
 # =========================
 
+# Keep same model (as in your report)
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 HEADERS = {
@@ -14,7 +16,7 @@ HEADERS = {
     "Content-Type": "application/json"
 } if HF_TOKEN else {}
 
-# cache to avoid repeated API calls
+# Cache to avoid repeated API calls
 CACHE = {}
 
 
@@ -37,14 +39,21 @@ def call_ai(prompt):
 
         # Model loading case
         if response.status_code == 503:
+            print("⏳ Model loading... retrying")
             time.sleep(3)
             return call_ai(prompt)
 
-        # API failure → return None (handled later)
+        # Debug for checking API
+        print(f"[DEBUG] Status: {response.status_code}")
+
+        # API failure → return None
         if response.status_code != 200:
+            print(f"[DEBUG] Error: {response.text}")
             return None
 
         data = response.json()
+
+        print(f"[DEBUG] Response: {data}")
 
         if isinstance(data, list) and len(data) > 0:
             return data[0].get("generated_text", "")
@@ -54,7 +63,8 @@ def call_ai(prompt):
 
         return None
 
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] Exception: {e}")
         return None
 
 
@@ -64,13 +74,17 @@ def call_ai(prompt):
 
 def fallback(rule_id, message):
     return f"""
-Explanation: {message}
+Explanation:
+This vulnerability is related to {message}. It is an insecure coding practice that may expose the application to attackers.
 
-Why dangerous: This vulnerability can be exploited by attackers to compromise system security.
+Why dangerous:
+Attackers can use this weakness to access sensitive information, execute malicious code, or compromise the system.
 
-Hacker perspective: An attacker may use {rule_id} to gain unauthorized access or execute malicious actions.
+Hacker perspective:
+Hackers actively search for {rule_id} vulnerabilities because they provide easy entry points into applications.
 
-Fix: Avoid insecure coding patterns and validate inputs properly.
+Fix:
+Use secure coding practices, validate inputs properly, avoid unsafe functions, and protect sensitive data using secure methods.
 """
 
 
@@ -88,33 +102,64 @@ def explain_issue(issue):
 
     if cache_key in CACHE:
         ai_output = CACHE[cache_key]
+
     else:
 
+        # STRONG PROMPT ENGINEERING
         prompt = f"""
-You are a cybersecurity expert.
+You are a senior cybersecurity expert helping beginner students understand software vulnerabilities.
 
-Explain this vulnerability in simple and hacker perspective.
+Your task is to explain the vulnerability clearly and uniquely.
+
+STRICT RULES:
+1. Do NOT simply repeat the vulnerability name
+2. Explain the real meaning of the vulnerability
+3. Use beginner-friendly simple English
+4. Explain why it is dangerous in real life
+5. Explain how hackers misuse it
+6. Explain the exact secure fix
+7. Each vulnerability must have a DIFFERENT explanation
+8. Response must be practical and student-friendly
+
+EXAMPLE:
+
+Vulnerability: HARDCODED_PASSWORD
+
+Explanation:
+A hardcoded password means the password is directly written inside the source code instead of storing it securely using environment variables or secret managers.
+
+Why dangerous:
+If someone gets access to the source code, they can easily see the password and use it to access databases, admin panels, or servers.
+
+Hacker perspective:
+Hackers often scan GitHub repositories searching for exposed passwords. Once found, they can log in directly without needing advanced attacks.
+
+Fix:
+Store passwords using environment variables or secret management systems instead of writing them directly inside the code.
+
+
+NOW EXPLAIN THIS:
 
 Vulnerability: {rule_id}
 Details: {message}
 
-Format:
+Return ONLY in this exact format:
+
 Explanation:
 Why dangerous:
 Hacker perspective:
 Fix:
 """
 
-        # =========================
-        # AI OR FALLBACK DECISION
-        # =========================
-
+        # AI or fallback
         if HF_TOKEN:
             ai_output = call_ai(prompt)
 
             if not ai_output:
+                print("⚠ Using fallback response")
                 ai_output = fallback(rule_id, message)
         else:
+            print("⚠ HF_TOKEN missing → using fallback")
             ai_output = fallback(rule_id, message)
 
         CACHE[cache_key] = ai_output
