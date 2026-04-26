@@ -2,15 +2,7 @@ import os
 import requests
 import time
 
-# =========================
-# IMPORT FALLBACK MODULE
-# =========================
 from ai_engine.fallback import fallback
-
-
-# =========================
-# CONFIG
-# =========================
 
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -20,19 +12,9 @@ HEADERS = {
     "Content-Type": "application/json"
 } if HF_TOKEN else {}
 
-# cache to avoid repeated API calls
 CACHE = {}
 
-
-# =========================
-# AI CALL FUNCTION
-# =========================
-
 def call_ai(prompt):
-    """
-    Calls Hugging Face API safely
-    """
-
     try:
         response = requests.post(
             API_URL,
@@ -41,12 +23,10 @@ def call_ai(prompt):
             timeout=60
         )
 
-        # Model loading case
         if response.status_code == 503:
             time.sleep(3)
             return call_ai(prompt)
 
-        # API failure → return None (handled later)
         if response.status_code != 200:
             return None
 
@@ -63,10 +43,6 @@ def call_ai(prompt):
     except Exception:
         return None
 
-
-# =========================
-# MAIN FUNCTION
-# =========================
 
 def explain_issue(issue):
 
@@ -95,10 +71,6 @@ Why dangerous:
 Hacker perspective:
 Fix:
 """
-
-        # =========================
-        # AI OR FALLBACK DECISION
-        # =========================
 
         if HF_TOKEN:
             ai_output = call_ai(prompt)

@@ -1,7 +1,3 @@
-# =========================
-# FALLBACK AI ENGINE
-# =========================
-
 def fallback(rule_id, message):
 
     explanations = {
@@ -89,7 +85,6 @@ Hacker perspective: {rule['hacker']}
 Fix: {rule['fix']}
 """
 
-    # Default fallback (for unknown rules)
     return f"""
 Explanation: {message}
 

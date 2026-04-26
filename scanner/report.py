@@ -2,16 +2,13 @@ import os
 from datetime import datetime
 from ai_engine.explain import explain_issue
 
-
 def clean_text(text):
-    """Remove emojis and special characters that crash ReportLab"""
     if not text:
         return ""
     return text.encode("ascii", "ignore").decode("ascii").strip()
 
 
 def get_ai_explanation(issue):
-    """Get only the AI analysis text, not the full formatted block"""
     try:
         rule_id = issue.get("check_id", "Unknown")
         message = issue.get("extra", {}).get("message", "No details")
@@ -21,7 +18,6 @@ def get_ai_explanation(issue):
         cache_key = f"{rule_id}_{issue.get('path', '')}_{issue.get('start', {}).get('line', 'N/A')}"
 
         if cache_key in CACHE:
-            # Extract just the AI text from cached full block
             cached = CACHE[cache_key]
             if "AI Analysis:" in cached:
                 return cached.split("AI Analysis:")[-1].strip().replace("==============================", "").strip()
@@ -30,12 +26,12 @@ def get_ai_explanation(issue):
 
 Explain this to a beginner student in simple English:
 
-1. What is {rule_id}? (explain in 2-3 simple lines what this means)
-2. Why is it dangerous? (explain the risk in 1-2 lines)
-3. How can a hacker misuse it? (give one simple real example)
-4. How to fix it? (give a simple solution in 1-2 lines)
+1. What is {rule_id}?
+2. Why is it dangerous?
+3. How can a hacker misuse it?
+4. How to fix it?
 
-Use very simple words. Assume the student has never heard of this before."""
+Use very simple words."""
 
         ai_output = call_ai(prompt)
         if not ai_output:
@@ -49,7 +45,6 @@ Use very simple words. Assume the student has never heard of this before."""
 
 
 def generate_report(vulnerabilities):
-
     os.makedirs("reports", exist_ok=True)
     pdf_path = "reports/report.pdf"
 
@@ -69,7 +64,6 @@ def generate_report(vulnerabilities):
 
         styles = getSampleStyleSheet()
 
-        # Custom styles
         title_style = ParagraphStyle(
             "CustomTitle",
             parent=styles["Title"],
@@ -104,44 +98,25 @@ def generate_report(vulnerabilities):
 
         content = []
 
-        # =========================
-        # TITLE
-        # =========================
         content.append(Paragraph("Security Scan Report", title_style))
         content.append(Spacer(1, 6))
-        content.append(Paragraph(
-            f"Total Vulnerabilities Found: {len(vulnerabilities)}",
-            body_style
-        ))
-        content.append(Paragraph(
-            f"Generated At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-            body_style
-        ))
+        content.append(Paragraph(f"Total Vulnerabilities Found: {len(vulnerabilities)}", body_style))
+        content.append(Paragraph(f"Generated At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", body_style))
         content.append(Spacer(1, 16))
         content.append(HRFlowable(width="100%", thickness=1, color=colors.grey))
         content.append(Spacer(1, 12))
 
-        # =========================
-        # EACH VULNERABILITY
-        # =========================
         for i, v in enumerate(vulnerabilities, 1):
             rule_id = clean_text(v.get("check_id", "Unknown"))
             path = clean_text(v.get("path", "Unknown file"))
             line = v.get("start", {}).get("line", "N/A")
             message = clean_text(v.get("extra", {}).get("message", "No details"))
 
-            # Issue heading
-            content.append(Paragraph(
-                f"Issue #{i}: {rule_id}",
-                heading_style
-            ))
-
-            # File and line
+            content.append(Paragraph(f"Issue #{i}: {rule_id}", heading_style))
             content.append(Paragraph(f"File: {path}  |  Line: {line}", label_style))
             content.append(Paragraph(f"Detected: {message}", body_style))
             content.append(Spacer(1, 6))
 
-            # AI explanation
             content.append(Paragraph("AI Explanation:", label_style))
             ai_text = clean_text(get_ai_explanation(v))
             content.append(Paragraph(ai_text, body_style))
