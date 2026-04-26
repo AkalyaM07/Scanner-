@@ -14,6 +14,7 @@ HEADERS = {
     "Content-Type": "application/json"
 } if HF_TOKEN else {}
 
+# Cache to avoid repeated API calls
 CACHE = {}
 
 
@@ -21,59 +22,71 @@ CACHE = {}
 # AI CALL FUNCTION
 # =========================
 
-def call_ai(prompt, retries=3):
-    for attempt in range(retries):
-        try:
-            response = requests.post(
-                API_URL,
-                headers=HEADERS,
-                json={"inputs": prompt},
-                timeout=60
-            )
+def call_ai(prompt):
+    """
+    Calls Hugging Face API safely
+    """
 
-            # Model loading
-            if response.status_code == 503:
-                time.sleep(2)
-                continue
+    try:
+        response = requests.post(
+            API_URL,
+            headers=HEADERS,
+            json={"inputs": prompt},
+            timeout=60
+        )
 
-            if response.status_code != 200:
-                return None
+        # Model loading case
+        if response.status_code == 503:
+            print("⏳ Model is loading... retrying")
+            time.sleep(3)
+            return call_ai(prompt)
 
-            data = response.json()
-
-            # Handle response format safely
-            if isinstance(data, list) and len(data) > 0:
-                return data[0].get("generated_text", "").strip()
-
-            if isinstance(data, dict):
-                return data.get("generated_text", "").strip()
-
+        # API failed
+        if response.status_code != 200:
+            print(f"⚠ API Error: {response.status_code}")
             return None
 
-        except Exception:
-            time.sleep(2)
+        data = response.json()
 
-    return None
+        # Normal Hugging Face response
+        if isinstance(data, list) and len(data) > 0:
+            return data[0].get("generated_text", "")
+
+        if isinstance(data, dict):
+            return data.get("generated_text", "")
+
+        return None
+
+    except Exception as e:
+        print(f"⚠ API Exception: {e}")
+        return None
 
 
 # =========================
-# FALLBACK EXPLANATION
+# GENERIC FALLBACK
 # =========================
 
 def fallback(rule_id, message):
+    """
+    Generic fallback if AI API fails
+    No hardcoded vulnerability map
+    """
+
     return f"""
 Explanation:
-{message}
+This vulnerability indicates an insecure coding practice that may create security risks in the application.
+
+It can expose sensitive information, allow unauthorized access, or help attackers misuse the system if not fixed properly.
 
 Why dangerous:
-Attackers can exploit this vulnerability to gain unauthorized access or manipulate system behavior.
+Attackers may exploit this weakness to steal data, access restricted areas, or execute malicious actions inside the system.
 
 Hacker perspective:
-An attacker can use {rule_id} to inject malicious input or execute unintended actions.
+An attacker may use {rule_id} to identify weak points in the code and perform unauthorized actions against the application.
 
 Fix:
-Use secure coding practices and validate all inputs properly.
-""".strip()
+Follow secure coding practices, validate all inputs properly, avoid unsafe functions, and store sensitive information securely.
+"""
 
 
 # =========================
@@ -81,6 +94,10 @@ Use secure coding practices and validate all inputs properly.
 # =========================
 
 def explain_issue(issue):
+    """
+    Main AI explanation function
+    """
+
     rule_id = issue.get("check_id", "Unknown")
     path = issue.get("path", "Unknown file")
     line = issue.get("start", {}).get("line", "N/A")
@@ -88,40 +105,69 @@ def explain_issue(issue):
 
     cache_key = f"{rule_id}_{path}_{line}"
 
+    # =========================
+    # Use cache if already generated
+    # =========================
+
     if cache_key in CACHE:
         ai_output = CACHE[cache_key]
+
     else:
+
+        # =========================
+        # Better AI Prompt
+        # =========================
+
         prompt = f"""
-You are a cybersecurity expert.
+You are a cybersecurity expert helping beginner developers.
 
-Explain the following vulnerability in a very simple and clear way.
+Explain the following vulnerability in simple student-friendly language.
 
-Vulnerability: {rule_id}
-Details: {message}
+Vulnerability Name: {rule_id}
+Detected Message: {message}
 
-Give output in this format:
+Instructions:
+- Do NOT just repeat the vulnerability name
+- First explain what this vulnerability actually means
+- Keep explanation simple and clear
+- Explain how hackers may exploit it
+- Explain how to fix it securely
+
+Return ONLY in this format:
 
 Explanation:
-(simple explanation)
+(Explain what this vulnerability means in 2 to 3 simple lines)
 
 Why dangerous:
-(real-world impact)
+(Explain why this vulnerability is risky)
 
 Hacker perspective:
-(how attacker exploits it)
+(Explain how attackers may use this vulnerability)
 
 Fix:
-(secure solution with example if possible)
+(Explain how to fix this securely)
 """
+
+        # =========================
+        # AI FIRST → fallback only if needed
+        # =========================
 
         if HF_TOKEN:
             ai_output = call_ai(prompt)
-            if not ai_output:
+
+            if not ai_output or len(ai_output.strip()) < 20:
+                print("⚠ AI response weak, using fallback")
                 ai_output = fallback(rule_id, message)
+
         else:
+            print("⚠ HF_TOKEN not found, using fallback")
             ai_output = fallback(rule_id, message)
 
         CACHE[cache_key] = ai_output
+
+    # =========================
+    # Final formatted output
+    # =========================
 
     return f"""
 ==============================
@@ -129,7 +175,7 @@ Fix:
 🔴 Issue: {rule_id}
 📄 File: {path} (Line {line})
 
-⚠️ Detected Message:
+⚠ Detected Message:
 {message}
 
 🤖 AI Analysis:
