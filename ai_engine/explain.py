@@ -5,7 +5,7 @@ _pipe = None
 
 
 # =========================
-# LOAD MODEL (ONCE)
+# LOAD MODEL ONCE
 # =========================
 def get_pipeline():
     global _pipe
@@ -14,8 +14,9 @@ def get_pipeline():
         print("🤖 Loading FLAN-T5 model...")
 
         _pipe = pipeline(
-            "text2text-generation",
-            model="google/flan-t5-base"
+            "text-generation",
+            model="google/flan-t5-base",
+            tokenizer="google/flan-t5-base"
         )
 
         print("✅ Model loaded successfully")
@@ -24,7 +25,7 @@ def get_pipeline():
 
 
 # =========================
-# AI FUNCTION
+# AI CALL FUNCTION
 # =========================
 def call_ai(prompt):
     try:
@@ -52,13 +53,13 @@ def fallback(rule_id, message):
 {message}
 
 2. Why dangerous:
-This vulnerability may allow attackers to exploit weak coding practices and compromise system security.
+This vulnerability can be exploited by attackers to compromise system security or sensitive data.
 
 3. Attack scenario:
-Attackers target {rule_id} to gain unauthorized access, leak sensitive data, or execute malicious actions.
+Attackers target {rule_id} to gain unauthorized access, execute malicious code, or leak data.
 
 4. Fix:
-Developers should follow secure coding practices, validate inputs, avoid unsafe functions, and store secrets securely.
+Developers should avoid insecure coding practices, validate inputs, and use secure alternatives.
 """
 
 
@@ -75,30 +76,28 @@ def explain_issue(issue):
 
     if cache_key in CACHE:
         ai_output = CACHE[cache_key]
-
     else:
 
-        # 🔥 STRONG PROMPT (IMPROVED)
+        # 🔥 IMPROVED PROMPT (STRONG + PRACTICAL)
         prompt = f"""
-You are a senior cybersecurity engineer and teacher.
+You are a cybersecurity expert teaching students.
 
-Explain this vulnerability in a simple and practical way for students.
+Explain the vulnerability in a practical and real-world way.
 
 Vulnerability: {rule_id}
-Scanner Message: {message}
+Description: {message}
 
-You must explain:
+Format your answer:
 
-1. Simple Explanation (real meaning in simple terms)
-2. Why attackers target this
+1. Simple Explanation (what it is)
+2. Why attackers care about it
 3. Real-world attack scenario
-4. Proper secure fix (developer mindset)
+4. Proper fix for developers
 
 Rules:
 - Do NOT repeat only the vulnerability name
-- Avoid generic answers
-- Be practical and educational
-- Use simple English
+- Be clear and practical
+- Use simple English for students
 """
 
         ai_output = call_ai(prompt)
