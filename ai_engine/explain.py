@@ -16,44 +16,48 @@ HEADERS = {
 
 CACHE = {}
 
+
 # =========================
 # AI CALL FUNCTION
 # =========================
 
 def call_ai(prompt, retries=3):
-    try:
-        response = requests.post(
-            API_URL,
-            headers=HEADERS,
-            json={"inputs": prompt},
-            timeout=60
-        )
+    for attempt in range(retries):
+        try:
+            response = requests.post(
+                API_URL,
+                headers=HEADERS,
+                json={"inputs": prompt},
+                timeout=60
+            )
 
-        # Model loading → retry
-        if response.status_code == 503 and retries > 0:
-            time.sleep(2)
-            return call_ai(prompt, retries - 1)
+            # Model loading
+            if response.status_code == 503:
+                time.sleep(2)
+                continue
 
-        # Failure
-        if response.status_code != 200:
+            if response.status_code != 200:
+                return None
+
+            data = response.json()
+
+            # Handle response format safely
+            if isinstance(data, list) and len(data) > 0:
+                return data[0].get("generated_text", "").strip()
+
+            if isinstance(data, dict):
+                return data.get("generated_text", "").strip()
+
             return None
 
-        data = response.json()
+        except Exception:
+            time.sleep(2)
 
-        if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "").strip()
-
-        if isinstance(data, dict):
-            return data.get("generated_text", "").strip()
-
-        return None
-
-    except Exception:
-        return None
+    return None
 
 
 # =========================
-# FALLBACK
+# FALLBACK EXPLANATION
 # =========================
 
 def fallback(rule_id, message):
@@ -61,14 +65,14 @@ def fallback(rule_id, message):
 Explanation:
 {message}
 
-Why Dangerous:
-Attackers can exploit this vulnerability to compromise the system or gain unauthorized access.
+Why dangerous:
+Attackers can exploit this vulnerability to gain unauthorized access or manipulate system behavior.
 
-Hacker Perspective:
-Hackers look for {rule_id} issues to break into systems or execute malicious code.
+Hacker perspective:
+An attacker can use {rule_id} to inject malicious input or execute unintended actions.
 
 Fix:
-Use secure coding practices and avoid unsafe operations.
+Use secure coding practices and validate all inputs properly.
 """.strip()
 
 
@@ -77,22 +81,20 @@ Use secure coding practices and avoid unsafe operations.
 # =========================
 
 def explain_issue(issue):
-    rule_id = issue.get("check_id", "UNKNOWN")
+    rule_id = issue.get("check_id", "Unknown")
     path = issue.get("path", "Unknown file")
     line = issue.get("start", {}).get("line", "N/A")
     message = issue.get("extra", {}).get("message", "No details")
 
     cache_key = f"{rule_id}_{path}_{line}"
 
-    # Cache check
     if cache_key in CACHE:
         ai_output = CACHE[cache_key]
     else:
-
         prompt = f"""
 You are a cybersecurity expert.
 
-Explain the following vulnerability in very simple terms.
+Explain the following vulnerability in a very simple and clear way.
 
 Vulnerability: {rule_id}
 Details: {message}
@@ -100,14 +102,20 @@ Details: {message}
 Give output in this format:
 
 Explanation:
-Why Dangerous:
-Hacker Perspective:
-Fix (with simple example if possible):
+(simple explanation)
+
+Why dangerous:
+(real-world impact)
+
+Hacker perspective:
+(how attacker exploits it)
+
+Fix:
+(secure solution with example if possible)
 """
 
         if HF_TOKEN:
             ai_output = call_ai(prompt)
-
             if not ai_output:
                 ai_output = fallback(rule_id, message)
         else:
@@ -121,10 +129,10 @@ Fix (with simple example if possible):
 🔴 Issue: {rule_id}
 📄 File: {path} (Line {line})
 
-⚠️ Message:
+⚠️ Detected Message:
 {message}
 
-🤖 AI Explanation:
+🤖 AI Analysis:
 {ai_output}
 
 ==============================
