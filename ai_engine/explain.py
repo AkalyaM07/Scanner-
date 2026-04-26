@@ -6,8 +6,8 @@ import time
 # CONFIG
 # =========================
 
-# ✅ Stable working model for GitHub Actions
-API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+# ✅ Correct stable Hugging Face Router API
+API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-base"
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
@@ -19,7 +19,7 @@ HEADERS = {
     "Content-Type": "application/json"
 } if HF_TOKEN else {}
 
-# cache to avoid repeated API calls
+# Cache to avoid repeated API calls
 CACHE = {}
 
 
@@ -44,9 +44,9 @@ def call_ai(prompt):
 
         print(f"[DEBUG] Status: {response.status_code}")
 
-        # model loading case
+        # Model loading case
         if response.status_code == 503:
-            print("⏳ Model loading... retrying")
+            print("⏳ Model loading... retrying...")
             time.sleep(3)
             return call_ai(prompt)
 
@@ -87,7 +87,7 @@ def explain_issue(issue):
         ai_output = CACHE[cache_key]
 
     else:
-        # ✅ Strong few-shot prompt for better unique explanation
+        # ✅ Strong prompt for better explanation quality
         prompt = f"""
 You are a cybersecurity expert helping beginner developers understand vulnerabilities.
 
