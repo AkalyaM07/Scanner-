@@ -6,7 +6,7 @@ import time
 # CONFIG
 # =========================
 
-API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large/v1/chat/completions"
+API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not HF_TOKEN:
@@ -30,32 +30,34 @@ def call_ai(prompt):
             API_URL,
             headers=HEADERS,
             json={
-                "model": "google/flan-t5-large",
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
-                "max_tokens": 300
+                "inputs": prompt,
+                "parameters": {
+                    "max_new_tokens": 300,
+                    "do_sample": False
+                }
             },
             timeout=60
         )
 
-        print(f"[DEBUG] Status: {response.status_code}")
-
         if response.status_code == 503:
-            time.sleep(5)
+            print("[DEBUG] Model loading, waiting 10s...")
+            time.sleep(10)
             return call_ai(prompt)
 
         if response.status_code != 200:
+            print(f"[DEBUG] Status: {response.status_code}")
             print(f"[DEBUG] Error: {response.text}")
             return "AI explanation unavailable."
 
         data = response.json()
-        print(f"[DEBUG] Response: {data}")
 
-        return data["choices"][0]["message"]["content"]
+        if isinstance(data, list) and len(data) > 0:
+            return data[0].get("generated_text", "AI explanation unavailable.")
+
+        if isinstance(data, dict):
+            return data.get("generated_text", "AI explanation unavailable.")
+
+        return "AI explanation unavailable."
 
     except Exception as e:
         print(f"[DEBUG] Exception: {e}")
