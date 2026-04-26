@@ -5,7 +5,7 @@ import time
 # =========================
 # CONFIG
 # =========================
-API_URL = "https://router.huggingface.co/hf-inference/models/microsoft/Phi-3.5-mini-instruct/v1/chat/completions"
+API_URL = "https://router.huggingface.co/sambanova/v1/chat/completions"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 HEADERS = {
@@ -25,7 +25,7 @@ def call_ai(prompt):
             API_URL,
             headers=HEADERS,
             json={
-                "model": "microsoft/Phi-3.5-mini-instruct",
+                "model": "Meta-Llama-3.2-1B-Instruct",
                 "messages": [
                     {
                         "role": "system",
@@ -65,7 +65,7 @@ def call_ai(prompt):
 def fallback(rule_id, message):
     return f"""
 1. What is {rule_id}?
-{message}. This means sensitive or unsafe code is present directly in your source code.
+{message}. This means unsafe code is present directly in your source code.
 
 2. Why is it dangerous?
 Anyone who accesses your code can exploit this weakness to attack your system.
@@ -74,7 +74,7 @@ Anyone who accesses your code can exploit this weakness to attack your system.
 A hacker can find this vulnerability and use it to gain unauthorized access or damage your system.
 
 4. How to fix it?
-Follow secure coding practices and never expose sensitive data or use unsafe functions in your code.
+Follow secure coding practices and never expose sensitive data or use unsafe functions.
 """
 
 
