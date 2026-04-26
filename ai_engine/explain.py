@@ -6,11 +6,11 @@ import time
 # CONFIG
 # =========================
 
-API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large"
+API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large/v1/chat/completions"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not HF_TOKEN:
-    print("⚠️  WARNING: HF_TOKEN not set. AI Analysis will not work.")
+    print("⚠️  WARNING: HF_TOKEN not set.")
 
 HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}",
@@ -30,33 +30,35 @@ def call_ai(prompt):
             API_URL,
             headers=HEADERS,
             json={
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": 300,
-                    "temperature": 0.7
-                }
+                "model": "google/flan-t5-large",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": 300
             },
             timeout=60
         )
+
+        print(f"[DEBUG] Status: {response.status_code}")
 
         if response.status_code == 503:
             time.sleep(5)
             return call_ai(prompt)
 
         if response.status_code != 200:
+            print(f"[DEBUG] Error: {response.text}")
             return "AI explanation unavailable."
 
         data = response.json()
+        print(f"[DEBUG] Response: {data}")
 
-        if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "AI explanation unavailable.")
-
-        if isinstance(data, dict):
-            return data.get("generated_text", "AI explanation unavailable.")
-
-        return "AI explanation unavailable."
+        return data["choices"][0]["message"]["content"]
 
     except Exception as e:
+        print(f"[DEBUG] Exception: {e}")
         return "AI explanation unavailable."
 
 
@@ -83,7 +85,6 @@ Details: {message}
 Explain: what it means, why it is dangerous, how a hacker exploits it, and how to fix it."""
 
         ai_output = call_ai(prompt)
-
         CACHE[cache_key] = ai_output
 
     return f"""
