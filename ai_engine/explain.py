@@ -6,13 +6,13 @@ import time
 # CONFIG
 # =========================
 
-# ✅ Correct stable Hugging Face Router API
-API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-base"
+# Hugging Face working endpoint
+API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
 
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not HF_TOKEN:
-    print("⚠️ WARNING: HF_TOKEN not set.")
+    print("⚠ WARNING: HF_TOKEN not set.")
 
 HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}",
@@ -29,7 +29,7 @@ CACHE = {}
 
 def call_ai(prompt):
     """
-    Safe Hugging Face API call
+    Safe Hugging Face API Call
     """
 
     try:
@@ -50,10 +50,27 @@ def call_ai(prompt):
             time.sleep(3)
             return call_ai(prompt)
 
-        # API failed
+        # =========================
+        # API FAILED → FALLBACK
+        # =========================
         if response.status_code != 200:
             print(f"[DEBUG] Error: {response.text}")
-            return "AI explanation unavailable."
+
+            return """
+⚠ FALLBACK RESPONSE USED
+
+Explanation:
+This response is coming from fallback logic because the Hugging Face API did not return a valid answer.
+
+Why dangerous:
+When API fails, the system uses backup logic to avoid empty explanations during the scan.
+
+Hacker perspective:
+This is only a backup response for testing and demo safety.
+
+Fix:
+Check API URL, HF_TOKEN, model availability, and internet connectivity.
+"""
 
         data = response.json()
         print(f"[DEBUG] Response: {data}")
@@ -68,7 +85,22 @@ def call_ai(prompt):
 
     except Exception as e:
         print(f"[DEBUG] Exception: {e}")
-        return "AI explanation unavailable."
+
+        return """
+⚠ FALLBACK RESPONSE USED
+
+Explanation:
+This response is coming from exception fallback because the API request failed unexpectedly.
+
+Why dangerous:
+Unexpected API failures can interrupt the security explanation process.
+
+Hacker perspective:
+This is only a safe backup response for testing.
+
+Fix:
+Check network connection, API token, and Hugging Face service availability.
+"""
 
 
 # =========================
@@ -87,7 +119,6 @@ def explain_issue(issue):
         ai_output = CACHE[cache_key]
 
     else:
-        # ✅ Strong prompt for better explanation quality
         prompt = f"""
 You are a cybersecurity expert helping beginner developers understand vulnerabilities.
 
