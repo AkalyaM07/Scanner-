@@ -5,7 +5,7 @@ import time
 # =========================
 # CONFIG
 # =========================
-API_URL = "https://router.huggingface.co/sambanova/v1/chat/completions"
+API_URL = "https://router.huggingface.co/v1/chat/completions"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 HEADERS = {
@@ -25,7 +25,7 @@ def call_ai(prompt):
             API_URL,
             headers=HEADERS,
             json={
-                "model": "Meta-Llama-3.2-1B-Instruct",
+                "model": "meta-llama/Llama-3.1-8B-Instruct:sambanova",
                 "messages": [
                     {
                         "role": "system",
