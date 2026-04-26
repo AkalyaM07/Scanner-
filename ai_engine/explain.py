@@ -6,7 +6,7 @@ import time
 # CONFIG
 # =========================
 
-API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
+API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 if not HF_TOKEN:
@@ -39,19 +39,14 @@ def call_ai(prompt):
             timeout=60
         )
 
-        print(f"[DEBUG] HF API status: {response.status_code}")
-
         if response.status_code == 503:
-            print("[DEBUG] Model loading, retrying in 5s...")
             time.sleep(5)
             return call_ai(prompt)
 
         if response.status_code != 200:
-            print(f"[DEBUG] HF API error: {response.text}")
             return "AI explanation unavailable."
 
         data = response.json()
-        print(f"[DEBUG] HF API response: {data}")
 
         if isinstance(data, list) and len(data) > 0:
             return data[0].get("generated_text", "AI explanation unavailable.")
@@ -62,7 +57,6 @@ def call_ai(prompt):
         return "AI explanation unavailable."
 
     except Exception as e:
-        print(f"[DEBUG] Exception in call_ai: {e}")
         return "AI explanation unavailable."
 
 
