@@ -1,102 +1,123 @@
+import os
+import requests
 import time
-import torch
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 # =========================
-# MODEL
+# CONFIG
 # =========================
-MODEL_NAME = "google/flan-t5-base"
 
-tokenizer = None
-model = None
+API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
+HF_TOKEN = os.getenv("HF_TOKEN")
 
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+} if HF_TOKEN else {}
 
-# =========================
-# LOAD MODEL ONCE
-# =========================
-def load_model():
-    global tokenizer, model
-
-    if model is None:
-        print("🤖 Loading FLAN-T5 model...")
-
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME)
-
-        model.eval()
-
-        print("✅ Model loaded successfully")
+# cache to avoid repeated API calls
+CACHE = {}
 
 
 # =========================
-# AI CALL (NO PIPELINE)
+# AI CALL FUNCTION
 # =========================
+
 def call_ai(prompt):
+    """
+    Calls Hugging Face API safely
+    """
+
     try:
-        load_model()
+        response = requests.post(
+            API_URL,
+            headers=HEADERS,
+            json={"inputs": prompt},
+            timeout=60
+        )
 
-        inputs = tokenizer(prompt, return_tensors="pt", truncation=True)
+        # Model loading case
+        if response.status_code == 503:
+            time.sleep(3)
+            return call_ai(prompt)
 
-        with torch.no_grad():
-            outputs = model.generate(
-                **inputs,
-                max_new_tokens=220,
-                do_sample=False
-            )
+        # API failure → return None (handled later)
+        if response.status_code != 200:
+            return None
 
-        return tokenizer.decode(outputs[0], skip_special_tokens=True)
+        data = response.json()
 
-    except Exception as e:
-        print(f"⚠ AI Error: {e}")
+        if isinstance(data, list) and len(data) > 0:
+            return data[0].get("generated_text", "")
+
+        if isinstance(data, dict):
+            return data.get("generated_text", "")
+
+        return None
+
+    except Exception:
         return None
 
 
 # =========================
-# FALLBACK (ONLY IF AI FAILS)
+# FALLBACK EXPLANATION
 # =========================
+
 def fallback(rule_id, message):
     return f"""
-1. What is {rule_id}?
-{message}. This means unsafe code is found in the project.
+Explanation: {message}
 
-2. Why is it dangerous?
-Attackers may exploit this vulnerability.
+Why dangerous: This vulnerability can be exploited by attackers to compromise system security.
 
-3. How can a hacker misuse it?
-They can gain unauthorized access or steal data.
+Hacker perspective: An attacker may use {rule_id} to gain unauthorized access or execute malicious actions.
 
-4. How to fix it?
-Use secure coding practices and avoid unsafe functions.
+Fix: Avoid insecure coding patterns and validate inputs properly.
 """
 
 
 # =========================
 # MAIN FUNCTION
 # =========================
+
 def explain_issue(issue):
     rule_id = issue.get("check_id", "Unknown")
     path = issue.get("path", "Unknown file")
     line = issue.get("start", {}).get("line", "N/A")
     message = issue.get("extra", {}).get("message", "No details")
 
-    prompt = f"""
-A security vulnerability "{rule_id}" is found.
+    cache_key = f"{rule_id}_{path}_{line}"
 
-Explain simply:
+    if cache_key in CACHE:
+        ai_output = CACHE[cache_key]
+    else:
 
-1. What is it?
-2. Why dangerous?
-3. How can attacker misuse it?
-4. How to fix it?
+        prompt = f"""
+You are a cybersecurity expert.
 
-Use simple English for students.
+Explain this vulnerability in simple and hacker perspective.
+
+Vulnerability: {rule_id}
+Details: {message}
+
+Format:
+Explanation:
+Why dangerous:
+Hacker perspective:
+Fix:
 """
 
-    ai_output = call_ai(prompt)
+        # =========================
+        # AI OR FALLBACK DECISION
+        # =========================
 
-    if not ai_output:
-        print("⚠ AI failed → using fallback")
-        ai_output = fallback(rule_id, message)
+        if HF_TOKEN:
+            ai_output = call_ai(prompt)
+
+            if not ai_output:
+                ai_output = fallback(rule_id, message)
+        else:
+            ai_output = fallback(rule_id, message)
+
+        CACHE[cache_key] = ai_output
 
     return f"""
 ==============================
@@ -104,7 +125,7 @@ Use simple English for students.
 🔴 Issue: {rule_id}
 📄 File: {path} (Line {line})
 
-⚠️ Message:
+⚠️ Detected Message:
 {message}
 
 🤖 AI Analysis:
