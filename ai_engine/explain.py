@@ -14,6 +14,7 @@ HEADERS = {
     "Content-Type": "application/json"
 } if HF_TOKEN else {}
 
+# cache to avoid repeated API calls
 CACHE = {}
 
 
@@ -22,29 +23,25 @@ CACHE = {}
 # =========================
 
 def call_ai(prompt):
+    """
+    Calls Hugging Face API safely
+    """
+
     try:
         response = requests.post(
             API_URL,
             headers=HEADERS,
-            json={
-                "inputs": prompt,
-                "parameters": {
-                    "max_new_tokens": 300,
-                    "temperature": 0.3,
-                    "return_full_text": False
-                }
-            },
+            json={"inputs": prompt},
             timeout=60
         )
 
-        # Model loading
+        # Model loading case
         if response.status_code == 503:
-            print("⏳ Model loading... retrying")
             time.sleep(3)
             return call_ai(prompt)
 
+        # API failure → return None (handled later)
         if response.status_code != 200:
-            print(f"⚠ API Error: {response.status_code}")
             return None
 
         data = response.json()
@@ -57,92 +54,23 @@ def call_ai(prompt):
 
         return None
 
-    except Exception as e:
-        print(f"⚠ API Exception: {e}")
+    except Exception:
         return None
 
 
 # =========================
-# GENERIC FALLBACK
+# FALLBACK EXPLANATION
 # =========================
 
-def fallback(rule_id):
+def fallback(rule_id, message):
     return f"""
-Explanation:
-This vulnerability represents an insecure coding practice that may expose the application to attackers.
+Explanation: {message}
 
-Why Dangerous:
-Attackers may use this weakness to access sensitive data, execute malicious actions, or compromise the system.
+Why dangerous: This vulnerability can be exploited by attackers to compromise system security.
 
-Hacker Perspective:
-Hackers actively search for {rule_id} type vulnerabilities because they often provide an easy entry point into applications.
+Hacker perspective: An attacker may use {rule_id} to gain unauthorized access or execute malicious actions.
 
-Fix:
-Follow secure coding standards, validate all inputs, avoid unsafe functions, and securely handle sensitive data.
-"""
-
-
-# =========================
-# PROMPT ENGINEERING
-# =========================
-
-def build_prompt(rule_id, message):
-    return f"""
-You are a cybersecurity expert helping beginner developers understand security vulnerabilities.
-
-IMPORTANT RULES:
-- Give UNIQUE answers for each vulnerability
-- Do NOT repeat the same answer for all vulnerabilities
-- Do NOT just repeat the vulnerability name
-- Explain the exact meaning of this vulnerability
-- Answer in simple student-friendly English
-- Give practical hacker perspective
-
-EXAMPLE 1:
-
-Vulnerability: HARDCODED_PASSWORD
-
-Explanation:
-A hardcoded password means the password is directly written inside the source code instead of storing it securely outside the code.
-
-Why Dangerous:
-If someone gets access to the code, they can easily see the password and use it to access the system without permission.
-
-Hacker Perspective:
-Hackers search GitHub repositories for exposed passwords. If they find one, they can use it to log in to admin panels, databases, or servers.
-
-Fix:
-Store passwords in environment variables or secret managers instead of writing them directly inside code.
-
-
-EXAMPLE 2:
-
-Vulnerability: DANGEROUS_EVAL
-
-Explanation:
-Using eval() allows Python to execute input as code. If user input is passed into eval(), attackers can run harmful commands.
-
-Why Dangerous:
-This can lead to remote code execution where attackers run malicious code on the server.
-
-Hacker Perspective:
-Hackers may inject malicious Python commands through user input and take full control of the application.
-
-Fix:
-Avoid using eval(). Use safer alternatives like ast.literal_eval() or proper input validation.
-
-
-NOW EXPLAIN THIS:
-
-Vulnerability: {rule_id}
-Detected Message: {message}
-
-Return ONLY in this format:
-
-Explanation:
-Why Dangerous:
-Hacker Perspective:
-Fix:
+Fix: Avoid insecure coding patterns and validate inputs properly.
 """
 
 
@@ -160,26 +88,49 @@ def explain_issue(issue):
 
     if cache_key in CACHE:
         ai_output = CACHE[cache_key]
-
     else:
-        prompt = build_prompt(rule_id, message)
+
+        prompt = f"""
+You are a cybersecurity expert helping beginner developers.
+
+Explain this vulnerability in simple student-friendly language.
+
+Vulnerability: {rule_id}
+Details: {message}
+
+IMPORTANT:
+- Do NOT repeat only the vulnerability name
+- First explain what the vulnerability actually means
+- Then explain why it is dangerous
+- Then explain how a hacker may exploit it
+- Then explain how to fix it
+
+Return ONLY in this format:
+
+Explanation:
+(Explain what this vulnerability means in 2 to 3 lines)
+
+Why dangerous:
+(Explain why it is risky)
+
+Hacker perspective:
+(Explain how attackers may use this)
+
+Fix:
+(Explain secure fix)
+"""
+
+        # =========================
+        # AI OR FALLBACK DECISION
+        # =========================
 
         if HF_TOKEN:
             ai_output = call_ai(prompt)
 
-            # weak response check
-            if (
-                not ai_output
-                or len(ai_output.strip()) < 40
-                or ai_output.strip().lower() == rule_id.lower()
-                or "Explanation: Hardcoded Password" in ai_output
-            ):
-                print("⚠ Weak AI response detected → using fallback")
-                ai_output = fallback(rule_id)
-
+            if not ai_output:
+                ai_output = fallback(rule_id, message)
         else:
-            print("⚠ HF_TOKEN missing → using fallback")
-            ai_output = fallback(rule_id)
+            ai_output = fallback(rule_id, message)
 
         CACHE[cache_key] = ai_output
 
@@ -189,10 +140,10 @@ def explain_issue(issue):
 🔴 Issue: {rule_id}
 📄 File: {path} (Line {line})
 
-⚠️ Message:
+⚠️ Detected Message:
 {message}
 
-🤖 AI Explanation:
+🤖 AI Analysis:
 {ai_output}
 
 ==============================
