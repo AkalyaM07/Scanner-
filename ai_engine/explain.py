@@ -9,10 +9,13 @@ import time
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+if not HF_TOKEN:
+    print("⚠️  WARNING: HF_TOKEN not set. AI Analysis will not work.")
+
 HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}",
     "Content-Type": "application/json"
-} if HF_TOKEN else {}
+}
 
 CACHE = {}
 
@@ -36,25 +39,31 @@ def call_ai(prompt):
             timeout=60
         )
 
+        print(f"[DEBUG] HF API status: {response.status_code}")
+
         if response.status_code == 503:
-            time.sleep(3)
+            print("[DEBUG] Model loading, retrying in 5s...")
+            time.sleep(5)
             return call_ai(prompt)
 
         if response.status_code != 200:
-            return None
+            print(f"[DEBUG] HF API error: {response.text}")
+            return "AI explanation unavailable."
 
         data = response.json()
+        print(f"[DEBUG] HF API response: {data}")
 
         if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "")
+            return data[0].get("generated_text", "AI explanation unavailable.")
 
         if isinstance(data, dict):
-            return data.get("generated_text", "")
+            return data.get("generated_text", "AI explanation unavailable.")
 
-        return None
+        return "AI explanation unavailable."
 
-    except Exception:
-        return None
+    except Exception as e:
+        print(f"[DEBUG] Exception in call_ai: {e}")
+        return "AI explanation unavailable."
 
 
 # =========================
