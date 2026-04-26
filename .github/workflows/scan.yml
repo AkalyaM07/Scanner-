@@ -2,9 +2,12 @@ name: DevSecOps Scanner
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   security-scan:
@@ -31,7 +34,6 @@ jobs:
       - name: Run Security Scanner
         run: python -m scanner.scanner
 
-      # ✅ Upload ALL reports (PDF + JSON)
       - name: Upload Security Reports
         if: always()
         uses: actions/upload-artifact@v4
