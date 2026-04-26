@@ -6,13 +6,10 @@ import time
 # CONFIG
 # =========================
 
-# Hugging Face working endpoint
+# Original working API URL
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-base"
 
 HF_TOKEN = os.getenv("HF_TOKEN")
-
-if not HF_TOKEN:
-    print("⚠ WARNING: HF_TOKEN not set.")
 
 HEADERS = {
     "Authorization": f"Bearer {HF_TOKEN}",
@@ -29,16 +26,14 @@ CACHE = {}
 
 def call_ai(prompt):
     """
-    Safe Hugging Face API Call
+    Calls Hugging Face API safely
     """
 
     try:
         response = requests.post(
             API_URL,
             headers=HEADERS,
-            json={
-                "inputs": prompt
-            },
+            json={"inputs": prompt},
             timeout=60
         )
 
@@ -50,56 +45,44 @@ def call_ai(prompt):
             time.sleep(3)
             return call_ai(prompt)
 
-        # =========================
-        # API FAILED → FALLBACK
-        # =========================
+        # API failure → return None
         if response.status_code != 200:
             print(f"[DEBUG] Error: {response.text}")
-
-            return """
-⚠ FALLBACK RESPONSE USED
-
-Explanation:
-This response is coming from fallback logic because the Hugging Face API did not return a valid answer.
-
-Why dangerous:
-When API fails, the system uses backup logic to avoid empty explanations during the scan.
-
-Hacker perspective:
-This is only a backup response for testing and demo safety.
-
-Fix:
-Check API URL, HF_TOKEN, model availability, and internet connectivity.
-"""
+            return None
 
         data = response.json()
         print(f"[DEBUG] Response: {data}")
 
         if isinstance(data, list) and len(data) > 0:
-            return data[0].get("generated_text", "AI explanation unavailable.")
+            return data[0].get("generated_text", "")
 
         if isinstance(data, dict):
-            return data.get("generated_text", "AI explanation unavailable.")
+            return data.get("generated_text", "")
 
-        return "AI explanation unavailable."
+        return None
 
     except Exception as e:
         print(f"[DEBUG] Exception: {e}")
+        return None
 
-        return """
-⚠ FALLBACK RESPONSE USED
 
+# =========================
+# FALLBACK EXPLANATION
+# =========================
+
+def fallback(rule_id, message):
+    return f"""
 Explanation:
-This response is coming from exception fallback because the API request failed unexpectedly.
+This vulnerability is related to {message}. It represents an insecure coding practice that may expose the application to attackers.
 
 Why dangerous:
-Unexpected API failures can interrupt the security explanation process.
+Attackers can exploit this weakness to gain unauthorized access, steal sensitive data, execute malicious commands, or compromise the system.
 
 Hacker perspective:
-This is only a safe backup response for testing.
+Hackers actively search for {rule_id} vulnerabilities because they often provide easy entry points into applications and servers.
 
 Fix:
-Check network connection, API token, and Hugging Face service availability.
+Use secure coding practices, validate all inputs properly, avoid unsafe functions, and protect sensitive information using secure methods.
 """
 
 
@@ -119,45 +102,35 @@ def explain_issue(issue):
         ai_output = CACHE[cache_key]
 
     else:
+        # Better prompt for unique explanations
         prompt = f"""
 You are a cybersecurity expert helping beginner developers understand vulnerabilities.
 
-You must explain each vulnerability clearly and uniquely.
+Explain this vulnerability in simple student-friendly language.
 
-Do NOT repeat only the vulnerability name.
+IMPORTANT:
+- Do NOT repeat only the vulnerability name
+- Give unique explanation for this specific vulnerability
+- Explain what it means clearly
+- Explain why it is dangerous
+- Explain how hackers can misuse it
+- Explain how developers can fix it
 
 Example:
 
 Vulnerability: HARDCODED_PASSWORD
 
 Explanation:
-A hardcoded password means the password is directly written inside the source code instead of storing it securely outside the code using environment variables.
+A hardcoded password means a password is directly written inside source code instead of being stored securely using environment variables or secret managers.
 
 Why dangerous:
-If someone gets access to the source code, they can easily see the password and use it to access the system without permission.
+If someone gains access to the code, they can immediately see the password and use it to access databases, admin panels, or servers.
 
 Hacker perspective:
-Hackers often search GitHub repositories for exposed passwords. Once found, they can use them to log in to admin panels, databases, or servers.
+Hackers search GitHub repositories for exposed passwords. Once found, they use them to break into systems without needing to hack further.
 
 Fix:
-Store passwords in environment variables or secret managers instead of writing them directly inside code.
-
-
-Example:
-
-Vulnerability: DANGEROUS_EVAL
-
-Explanation:
-Using eval() allows Python to execute input as code. If untrusted user input is passed into eval(), attackers can run malicious commands.
-
-Why dangerous:
-This can lead to remote code execution where attackers gain full control over the server or application.
-
-Hacker perspective:
-Hackers may inject harmful Python commands through user input and execute malicious operations like deleting files or stealing data.
-
-Fix:
-Avoid using eval(). Use safer alternatives like ast.literal_eval() or proper input validation.
+Store passwords in environment variables or secure secret managers instead of writing them directly inside the code.
 
 
 Now explain this vulnerability:
@@ -173,7 +146,14 @@ Hacker perspective:
 Fix:
 """
 
-        ai_output = call_ai(prompt)
+        if HF_TOKEN:
+            ai_output = call_ai(prompt)
+
+            if not ai_output:
+                ai_output = fallback(rule_id, message)
+        else:
+            ai_output = fallback(rule_id, message)
+
         CACHE[cache_key] = ai_output
 
     return f"""
