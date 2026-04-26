@@ -1,22 +1,19 @@
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import os
+import requests
+import time
+
+# =========================
+# CONFIG
+# =========================
+API_URL = "https://router.huggingface.co/hf-inference/models/microsoft/Phi-3.5-mini-instruct/v1/chat/completions"
+HF_TOKEN = os.getenv("HF_TOKEN")
+
+HEADERS = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 CACHE = {}
-_model = None
-_tokenizer = None
-
-
-# =========================
-# MODEL LOADER
-# =========================
-def load_model():
-    global _model, _tokenizer
-
-    if _model is None:
-        print("🤖 Loading FLAN-T5 model...")
-        model_name = "google/flan-t5-large"
-        _tokenizer = AutoTokenizer.from_pretrained(model_name)
-        _model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-        print("✅ Model loaded successfully")
 
 
 # =========================
@@ -24,25 +21,41 @@ def load_model():
 # =========================
 def call_ai(prompt):
     try:
-        load_model()
+        response = requests.post(
+            API_URL,
+            headers=HEADERS,
+            json={
+                "model": "microsoft/Phi-3.5-mini-instruct",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a cybersecurity teacher explaining vulnerabilities to beginner students in simple English."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "max_tokens": 300
+            },
+            timeout=60
+        )
 
-        inputs = _tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=512
-        )
-        outputs = _model.generate(
-            **inputs,
-            max_new_tokens=200,
-            num_beams=4,
-            early_stopping=True
-        )
-        result = _tokenizer.decode(outputs[0], skip_special_tokens=True)
-        return result if result else None
+        if response.status_code == 503:
+            print("[INFO] Model loading, retrying in 5s...")
+            time.sleep(5)
+            return call_ai(prompt)
+
+        if response.status_code != 200:
+            print(f"[DEBUG] Status: {response.status_code}")
+            print(f"[DEBUG] Error: {response.text}")
+            return None
+
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
 
     except Exception as e:
-        print("⚠ AI Error:", e)
+        print(f"[DEBUG] Exception: {e}")
         return None
 
 
@@ -52,16 +65,16 @@ def call_ai(prompt):
 def fallback(rule_id, message):
     return f"""
 1. What is {rule_id}?
-{message}. This means sensitive information is exposed directly in the source code.
+{message}. This means sensitive or unsafe code is present directly in your source code.
 
 2. Why is it dangerous?
-Anyone who reads the code can steal this information and misuse it.
+Anyone who accesses your code can exploit this weakness to attack your system.
 
 3. How can a hacker misuse it?
-A hacker can find this value in your code and use it to break into your system.
+A hacker can find this vulnerability and use it to gain unauthorized access or damage your system.
 
 4. How to fix it?
-Never write sensitive values directly in code. Use environment variables instead.
+Follow secure coding practices and never expose sensitive data or use unsafe functions in your code.
 """
 
 
@@ -79,18 +92,16 @@ def explain_issue(issue):
     if cache_key in CACHE:
         return CACHE[cache_key]
 
-    prompt = f"""You are a cybersecurity teacher explaining to beginner students.
+    prompt = f"""A security vulnerability called "{rule_id}" was found in a student's code.
 
-A security vulnerability called "{rule_id}" was found in the code.
+Explain this to a beginner student in simple English:
 
-Answer these 4 questions in simple English:
-
-1. What is {rule_id}? (explain in 2-3 simple lines what this vulnerability means)
+1. What is {rule_id}? (explain in 2-3 simple lines what this means)
 2. Why is it dangerous? (explain the risk in 1-2 lines)
-3. How can a hacker misuse it? (give a simple real example)
+3. How can a hacker misuse it? (give one simple real example)
 4. How to fix it? (give a simple solution in 1-2 lines)
 
-Use very simple words. Assume the student has never heard of this vulnerability before."""
+Use very simple words. Assume the student has never heard of this before."""
 
     ai_output = call_ai(prompt)
 
