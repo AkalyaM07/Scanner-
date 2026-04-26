@@ -25,7 +25,7 @@ def call_ai(prompt):
             API_URL,
             headers=HEADERS,
             json={
-                "model": "meta-llama/Llama-3.1-8B-Instruct:sambanova",
+                "model": "meta-llama/Llama-3.3-70B-Instruct:sambanova",
                 "messages": [
                     {
                         "role": "system",
