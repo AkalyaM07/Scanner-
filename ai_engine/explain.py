@@ -1,33 +1,22 @@
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 
 CACHE = {}
-_pipe = None
+_model = None
+_tokenizer = None
 
 
 # =========================
 # SAFE MODEL LOADER
 # =========================
-def get_pipeline():
-    global _pipe
+def load_model():
+    global _model, _tokenizer
 
-    if _pipe is None:
-        print("🤖 Loading FLAN-T5 model safely...")
-
+    if _model is None:
+        print("🤖 Loading FLAN-T5 model...")
         model_name = "google/flan-t5-base"
-
-        # ✔ Direct model loading (avoids CI pipeline issues)
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
-
-        _pipe = pipeline(
-            task="text2text-generation",
-            model=model,
-            tokenizer=tokenizer
-        )
-
+        _tokenizer = AutoTokenizer.from_pretrained(model_name)
+        _model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         print("✅ Model loaded successfully")
-
-    return _pipe
 
 
 # =========================
@@ -35,19 +24,13 @@ def get_pipeline():
 # =========================
 def call_ai(prompt):
     try:
-        pipe = get_pipeline()
+        load_model()
 
-        result = pipe(
-            prompt,
-            max_new_tokens=200,
-            do_sample=False
-        )
+        inputs = _tokenizer(prompt, return_tensors="pt", truncation=True, max_length=512)
+        outputs = _model.generate(**inputs, max_new_tokens=200)
+        result = _tokenizer.decode(outputs[0], skip_special_tokens=True)
 
-        # FLAN-T5 output handling
-        if result and len(result) > 0:
-            return result[0].get("generated_text", "")
-
-        return None
+        return result if result else None
 
     except Exception as e:
         print("⚠ AI Error:", e)
@@ -55,7 +38,7 @@ def call_ai(prompt):
 
 
 # =========================
-# FALLBACK (SAFE OUTPUT)
+# FALLBACK
 # =========================
 def fallback(rule_id, message):
     return f"""
@@ -84,13 +67,9 @@ def explain_issue(issue):
 
     cache_key = f"{rule_id}_{path}_{line}"
 
-    # ✔ cache optimization
     if cache_key in CACHE:
         return CACHE[cache_key]
 
-    # =========================
-    # STRONG PROMPT
-    # =========================
     prompt = f"""
 You are a senior cybersecurity engineer teaching students.
 
@@ -118,9 +97,7 @@ Rules:
         print("⚠ AI failed → using fallback")
         ai_output = fallback(rule_id, message)
 
-    CACHE[cache_key] = ai_output
-
-    return f"""
+    result = f"""
 ==============================
 
 🔴 Issue: {rule_id}
@@ -134,3 +111,6 @@ Rules:
 
 ==============================
 """
+
+    CACHE[cache_key] = result
+    return result
